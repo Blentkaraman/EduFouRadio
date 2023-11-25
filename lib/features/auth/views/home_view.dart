@@ -1,131 +1,239 @@
-import 'package:auto_route/annotations.dart';
-import 'package:auto_route/auto_route.dart';
-import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:math';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:radio_app/common/colors.dart';
 import 'package:radio_app/common/sizes.dart';
-import 'package:radio_app/routes/app_route.dart';
-import 'package:radio_app/widgets/sub_title_widget.dart';
+import 'package:radio_app/features/auth/views/radio.dart';
+import 'package:radio_app/widgets/expandable.dart';
 
-@RoutePage()
-class HomeView extends StatelessWidget {
+import 'package:radio_app/widgets/player.dart';
+import 'package:radio_app/widgets/radio_card.dart';
+
+class HomeView extends StatefulWidget {
   const HomeView({super.key});
 
   @override
+  State<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<HomeView> {
+  dynamic radioClass;
+  bool isPlaying = false;
+  final _controller = ScrollController();
+  double offset = 0;
+  late double _percentageOpen = 0;
+  String radioTitle = 'Select Channel';
+  String radioListener = 'Select Channel';
+  String radioImageURl = '';
+  bool isPlayCardVisible = false;
+  dynamic currentlyPlaying;
+  List<dynamic> stationList = [];
+  List<String>? metadata;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(moveOffset);
+    radioClass = RadioClass();
+    readJson();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    radioClass.stop();
+  }
+
+  moveOffset() {
+    setState(() {
+      offset = min(max(0, _controller.offset / 6 - 16), 32);
+    });
+  }
+
+  Future<void> readJson() async {
+    final String response =
+        await rootBundle.loadString('assets/json/station.json');
+    List<dynamic> data = json.decode(response);
+
+    setState(() {
+      stationList.addAll(data);
+    });
+  }
+
+  Future<void> radioPlayer(item) async {
+    currentlyPlaying = item;
+    radioClass.stop();
+
+    setState(() {
+      radioClass.setChannel(item);
+    });
+
+    radioClass.radioPlayer.stateStream.listen((value) {
+      setState(() {
+        isPlaying = value;
+      });
+    });
+
+    radioClass.radioPlayer.metadataStream.listen((value) {
+      setState(() {
+        metadata = value;
+      });
+    });
+
+    setState(() {
+      isPlayCardVisible = true;
+      radioTitle = item['name'];
+      radioImageURl = item['imageURL'];
+      radioListener = item['listener'];
+
+      stationList.asMap().forEach((index, items) {
+        if (items == item) {
+          if (item['isPlay'] == true) {
+            stationList[index]['isPlay'] = false;
+            radioClass.pause();
+          } else {
+            stationList[index]['isPlay'] = true;
+            Future.delayed(
+              const Duration(seconds: 1),
+              () => radioClass.play(),
+            );
+          }
+        } else {
+          stationList[index]['isPlay'] = false;
+        }
+      });
+    });
+  }
+
+  Future<void> play() async {
+    radioClass.play();
+    checkStation();
+  }
+
+  Future<void> pause() async {
+    radioClass.pause();
+    checkStation();
+  }
+
+  void checkStation() {
+    stationList.asMap().forEach((index, items) {
+      if (items == currentlyPlaying) {
+        if (currentlyPlaying['isPlay'] == true) {
+          stationList[index]['isPlay'] = false;
+          radioClass.pause();
+        } else {
+          stationList[index]['isPlay'] = true;
+          Future.delayed(
+            const Duration(seconds: 1),
+            () => radioClass.play(),
+          );
+        }
+      } else {
+        stationList[index]['isPlay'] = false;
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-          child: Padding(
-        padding: scaffoldPadding,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Padding(
-                  padding: scaffoldPadding,
-                  child: CircleAvatar(
-                    backgroundColor: profilePhotoCircleColor,
-                    radius: 25,
-                    backgroundImage: NetworkImage(
-                        "https://randomuser.me/api/portraits/men/34.jpg"),
+      body: ExpandableBottomSheet(
+        background: CustomScrollView(
+          controller: _controller,
+          physics: const BouncingScrollPhysics(),
+          slivers: <Widget>[
+            SliverAppBar(
+              backgroundColor: Colors.black,
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Padding(
+                    padding: scaffoldPadding,
+                    child: CircleAvatar(
+                        backgroundColor: profilePhotoCircleColor,
+                        radius: 25,
+                        backgroundImage:
+                            AssetImage("assets/images/profiledu.png")),
                   ),
-                ),
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(
-                    Icons.add_alert_sharp,
-                    color: Colors.white,
-                    size: 25,
-                  ),
-                ),
-              ],
-            ),
-            Padding(
-              padding: vertical10,
-              child: TextFormField(
-                decoration: InputDecoration(
-                    filled: true,
-                    fillColor: searchColor,
-                    hintText: "Search",
-                    hintStyle: TextStyle(color: whiteColor),
-                    prefixIcon: Icon(Icons.search),
-                    prefixIconColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide(color: Colors.white),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(
+                      Icons.add_alert_sharp,
+                      color: Colors.white,
+                      size: 25,
                     ),
-                    contentPadding: vertical10),
+                  ),
+                ],
+              ),
+              primary: true,
+              pinned: true,
+              centerTitle: true,
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12.0, vertical: 16),
+                child: Text('Radio List',
+                    style: theme.textTheme.headlineSmall!.copyWith(
+                        fontWeight: FontWeight.w600, color: Colors.white)),
               ),
             ),
-            const SubTittleWidget(
-              title: "Favorite Radios",
-              size: 15,
-            ),
-            Expanded(
-              flex: 3,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: 4,
-                itemBuilder: (context, index) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 10),
-                    child: AspectRatio(
-                      aspectRatio: 16 / 11,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(20),
-                          //color: Colors.blue,
-                          image: const DecorationImage(
-                            image: AssetImage("assets/images/NumberOne.png"),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        child: const Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                children: [
-                                  Text(
-                                    "Play",
-                                    style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
+            SliverToBoxAdapter(
+              child: Center(
+                child: SizedBox(
+                  height: 130,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: stationList.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final item = stationList[index];
+
+                      return Container(
+                          alignment: Alignment.center,
+                          width: 300,
+                          child: Center(
+                              child: RadioCard(
+                                  onTab: () => radioPlayer(item), item: item)));
+                    },
+                  ),
+                ),
               ),
             ),
-            const SubTittleWidget(
-              title: "Play Radios",
-              size: 20,
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 20,
+              ),
             ),
-            Expanded(
-              flex: 5,
-              child: GestureDetector(
-                onTap: () {
-                  context.router.push(RadioPlayRoute());
-                },
+            SliverToBoxAdapter(
+              child: Text('Radio Playing',
+                  style: theme.textTheme.headlineSmall!.copyWith(
+                      fontWeight: FontWeight.w600, color: Colors.white)),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: 20,
+              ),
+            ),
+            SliverToBoxAdapter(
+                child: GestureDetector(
+              onTap: () {},
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
                 child: Container(
                   width: double.infinity,
                   padding: EdgeInsets.all(1),
                   decoration: BoxDecoration(
-                    color: textButtonColorLight,
-                    borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(30),
-                        topRight: Radius.circular(30)),
+                    color: Colors.grey.shade900,
+                    borderRadius: BorderRadius.all(
+                      Radius.circular(20),
+                    ),
                   ),
-                  child: const Column(
+                  child: Column(
                     children: [
                       Padding(
                         padding: EdgeInsets.symmetric(vertical: 10),
@@ -135,14 +243,14 @@ class HomeView extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        "104.3",
+                        radioTitle,
                         style: TextStyle(
                             fontSize: 50,
                             fontWeight: FontWeight.bold,
                             color: whiteColor),
                       ),
                       Text(
-                        "Fm-Radyo",
+                        radioListener,
                         style: TextStyle(color: whiteColor, fontSize: 18),
                       ),
                       Padding(
@@ -158,12 +266,12 @@ class HomeView extends StatelessWidget {
                                 color: whiteColor,
                               ),
                             ),
-                            Padding(
-                              padding: EdgeInsets.all(10),
-                              child: Icon(
-                                Icons.stop_rounded,
-                                size: 100,
-                                color: Colors.redAccent,
+                            IconButton(
+                              color: Colors.red,
+                              onPressed: () => isPlaying ? pause() : play(),
+                              icon: Icon(
+                                isPlaying ? Icons.stop : Icons.play_arrow,
+                                size: 40,
                               ),
                             ),
                             Padding(
@@ -181,10 +289,44 @@ class HomeView extends StatelessWidget {
                   ),
                 ),
               ),
-            )
+            )),
+            const SliverToBoxAdapter(
+              child: SizedBox(
+                height: 70,
+              ),
+            ),
           ],
         ),
-      )),
+        onIsContractedCallback: () => print('contracted'),
+        onIsExtendedCallback: () => print('extended'),
+        persistentContentHeight: 64,
+        expandableContent: isPlayCardVisible
+            ? Player(
+                title: radioTitle,
+                listener: radioListener,
+                imageURL: radioImageURl,
+                percentageOpen: _percentageOpen,
+                onTab: () => isPlaying ? pause() : play(),
+                icon:
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                metadata: metadata,
+              )
+            : const SizedBox(),
+        onOffsetChanged: (offset, minOffset, maxOffset) {
+          if (isPlayCardVisible) {
+            if (maxOffset == null || offset == null || minOffset == null) {
+              return;
+            }
+            final range = maxOffset - minOffset;
+            final currentOffset = offset - minOffset;
+            setState(() {
+              _percentageOpen = max(0, 1 - (currentOffset / range));
+            });
+          }
+        },
+        enableToggle: true,
+        isDraggable: true,
+      ),
     );
   }
 }
