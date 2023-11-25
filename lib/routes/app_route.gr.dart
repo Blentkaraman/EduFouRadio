@@ -21,12 +21,7 @@ abstract class _$AppRouter extends RootStackRouter {
         child: const HomeView(),
       );
     },
-    RadioPlayRoute.name: (routeData) {
-      return AutoRoutePage<dynamic>(
-        routeData: routeData,
-        child: const RadioPlayView(),
-      );
-    },
+    
     SignInRoute.name: (routeData) {
       return AutoRoutePage<dynamic>(
         routeData: routeData,
